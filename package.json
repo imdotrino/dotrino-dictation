@@ -1,6 +1,6 @@
 {
   "name": "@dotrino/dictation",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Dictar en vez de escribir: un botón de micrófono que devuelve texto, con Whisper en el aparato o el proveedor de IA del usuario. Nunca la Web Speech API. Ecosistema Dotrino.",
   "license": "MIT",
   "type": "module",
