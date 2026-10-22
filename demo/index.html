@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>dotrino-dictation demo</title>
+</head>
+<body>
+  <!-- Página de desarrollo y de las pruebas e2e: no se publica. -->
+  <p>local: <dotrino-dictation id="local" engine="local" lang="es"></dotrino-dictation></p>
+  <p>provider: <dotrino-dictation id="provider" engine="provider" lang="es"></dotrino-dictation></p>
+  <p>off: <dotrino-dictation id="off" lang="es"></dotrino-dictation></p>
+  <pre id="out" data-testid="out"></pre>
+  <script type="module">
+    import '../src/index.js'
+    const out = document.getElementById('out')
+    const log = (line) => { out.textContent += line + '\n' }
+    // El «proveedor» de la demo: dice cuánto audio le llegó, para comprobar que salió algo.
+    document.getElementById('provider').transcriber = async (blob, { language }) => `provider ${language} ${blob.type.split(';')[0]} ${blob.size > 1000 ? 'audio' : 'tiny'}`
+    for (const el of document.querySelectorAll('dotrino-dictation')) {
+      el.addEventListener('dotrino-dictation-text', (e) => log(`${el.id} text: ${e.detail.text}`))
+      el.addEventListener('dotrino-dictation-error', (e) => log(`${el.id} error: ${e.detail.code} ${e.detail.message}`))
+      el.addEventListener('dotrino-dictation-ready', () => log(`${el.id} ready`))
+    }
+  </script>
+</body>
+</html>

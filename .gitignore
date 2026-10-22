@@ -1,0 +1,5 @@
+node_modules/
+.claude/
+.npmrc
+dist-demo/
+test-results/
