@@ -1,5 +1,8 @@
 // Lo que dice el botón, en los dos idiomas del ecosistema (tuteo, lenguaje llano).
 
+/** @typedef {{ off: string, start: string, stop: string, download: string, downloading: string, ready: string, listening: string, transcribing: string, errors: Record<string, string> }} Texts */
+
+/** @type {Record<'es' | 'en', Texts> & Record<string, Texts | undefined>} */
 export const TEXT = {
   es: {
     off: 'Dictado apagado',

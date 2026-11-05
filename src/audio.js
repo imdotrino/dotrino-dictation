@@ -4,6 +4,13 @@ import { codeError } from './errors.js'
 
 const SAMPLE_RATE = 16000
 
+/**
+ * @typedef {object} Recording
+ * @property {number} startedAt epoch ms
+ * @property {() => Promise<Blob>} stop
+ * @property {() => void} cancel
+ */
+
 /** El formato que este navegador sabe grabar, en orden de preferencia. */
 function pickMime () {
   for (const m of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']) {
@@ -16,6 +23,7 @@ function pickMime () {
  * Empieza a grabar. Devuelve `{ stop, cancel, startedAt }`: `stop()` resuelve con el Blob,
  * `cancel()` suelta el micrófono sin devolver nada.
  * Errores: `mic-unsupported`, `mic-denied`, `mic-missing`, `mic-failed`.
+ * @returns {Promise<Recording>}
  */
 export async function startRecording () {
   if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
@@ -26,16 +34,19 @@ export async function startRecording () {
     stream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
     })
-  } catch (e) {
+  } catch (err) {
+    const e = /** @type {DOMException} */ (err)
     if (e?.name === 'NotAllowedError' || e?.name === 'SecurityError') throw codeError('mic-denied', 'microphone permission denied', { cause: e })
     if (e?.name === 'NotFoundError' || e?.name === 'OverconstrainedError') throw codeError('mic-missing', 'no microphone found', { cause: e })
     throw codeError('mic-failed', `could not open the microphone: ${e?.message || e}`, { cause: e })
   }
   const mime = pickMime()
   const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+  /** @type {Blob[]} */
   const chunks = []
   rec.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data) }
   const release = () => stream.getTracks().forEach((t) => t.stop())
+  /** @type {Promise<Blob>} */
   const done = new Promise((resolve, reject) => {
     rec.onstop = () => {
       release()
@@ -43,7 +54,7 @@ export async function startRecording () {
     }
     rec.onerror = (e) => {
       release()
-      reject(codeError('mic-failed', `recording failed: ${e?.error?.message || 'unknown error'}`))
+      reject(codeError('mic-failed', `recording failed: ${/** @type {Event & { error?: DOMException }} */ (e)?.error?.message || 'unknown error'}`))
     }
   })
   rec.start()
@@ -61,7 +72,11 @@ export async function startRecording () {
   }
 }
 
-/** Blob grabado → Float32Array a 16 kHz, mono (lo que pide Whisper). */
+/**
+ * Blob grabado → Float32Array a 16 kHz, mono (lo que pide Whisper).
+ * @param {Blob} blob
+ * @returns {Promise<Float32Array>}
+ */
 export async function decodeTo16k (blob) {
   const ctx = new AudioContext({ sampleRate: SAMPLE_RATE })
   try {
@@ -74,7 +89,7 @@ export async function decodeTo16k (blob) {
     }
     return out
   } catch (e) {
-    throw codeError('audio-undecodable', `the recorded audio could not be decoded: ${e?.message || e}`, { cause: e })
+    throw codeError('audio-undecodable', `the recorded audio could not be decoded: ${/** @type {Error} */ (e)?.message || e}`, { cause: e })
   } finally {
     ctx.close()
   }

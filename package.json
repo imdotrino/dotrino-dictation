@@ -1,6 +1,6 @@
 {
   "name": "@dotrino/dictation",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Dictar en vez de escribir: un botón de micrófono que devuelve texto, con Whisper en el aparato o el proveedor de IA del usuario. Nunca la Web Speech API. Ecosistema Dotrino.",
   "license": "MIT",
   "type": "module",
@@ -16,7 +16,8 @@
     "test": "node --test test/*.test.mjs",
     "build:demo": "vite build",
     "dev": "vite",
-    "test:e2e": "vite build && node --test --test-concurrency=1 test/e2e/*.e2e.mjs"
+    "test:e2e": "vite build && node --test --test-concurrency=1 test/e2e/*.e2e.mjs",
+    "type-check": "tsc --noEmit -p jsconfig.json"
   },
   "repository": {
     "type": "git",
@@ -36,6 +37,7 @@
   },
   "devDependencies": {
     "playwright": "1.62.0",
+    "typescript": "5.9.3",
     "vite": "7.3.6"
   }
 }

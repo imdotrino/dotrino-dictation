@@ -11,24 +11,36 @@ import ortWasm from 'onnxruntime-web/ort-wasm-simd-threaded.wasm?url'
 
 env.allowLocalModels = false
 env.useBrowserCache = true
-env.backends.onnx.wasm.wasmPaths = {
+const wasm = env.backends.onnx.wasm
+if (!wasm) throw new Error('dictation worker: transformers has no onnx wasm backend')
+wasm.wasmPaths = {
   mjs: new URL(ortMjs, self.location.href).href,
   wasm: new URL(ortWasm, self.location.href).href,
 }
 // Sin aislamiento entre orígenes (GitHub Pages no deja poner las cabeceras) no hay hilos.
-env.backends.onnx.wasm.numThreads = 1
+wasm.numThreads = 1
 
+/** @typedef {(audio: Float32Array, opts: object) => Promise<any>} Asr */
+
+/** @type {Asr | null} */
 let asr = null
+/** @type {Promise<Asr> | null} */
 let loading = null
 
+/**
+ * @param {string} model
+ * @param {number} id
+ * @returns {Promise<Asr>}
+ */
 function load (model, id) {
   if (asr) return Promise.resolve(asr)
   if (loading) return loading
+  /** @type {Map<string, { loaded: number, total: number }>} */
   const files = new Map()
   loading = pipeline('automatic-speech-recognition', model, {
     dtype: 'q8',
     device: 'wasm',
-    progress_callback: (p) => {
+    progress_callback: (/** @type {any} */ p) => {  // la forma cambia según `status`
       if (p.status !== 'progress' || !p.total) return
       files.set(p.file, { loaded: p.loaded, total: p.total })
       let loaded = 0
@@ -37,8 +49,8 @@ function load (model, id) {
       self.postMessage({ op: 'progress', id, loaded, total })
     },
   }).then((p) => {
-    asr = p
-    return p
+    asr = /** @type {Asr} */ (/** @type {unknown} */ (p))
+    return asr
   }, (e) => {
     loading = null
     throw e
@@ -67,6 +79,6 @@ self.onmessage = async ({ data }) => {
   } catch (e) {
     console.error('[dictation] worker:', e)
     const code = op === 'load' || !asr ? 'model-load-failed' : 'transcribe-failed'
-    self.postMessage({ op: 'error', id, code, message: String(e?.message || e) })
+    self.postMessage({ op: 'error', id, code, message: String(/** @type {Error} */ (e)?.message || e) })
   }
 }

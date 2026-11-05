@@ -49,25 +49,38 @@ svg { inline-size: 55%; block-size: 55%; fill: currentColor; }
 @media (prefers-reduced-motion: reduce) { button, .ring { animation: none !important; } }
 `
 
+/** @typedef {'idle' | 'loading' | 'recording' | 'transcribing'} DictationState */
+/** @typedef {(audio: Blob, opts: { language: string }) => Promise<string>} Transcriber */
+
+/**
+ * El elemento `<dotrino-dictation>`. Eventos: `dotrino-dictation-text` ({ text, engine }),
+ * `-state`, `-status`, `-error` ({ code, message }) y `-ready`.
+ */
 export class DotrinoDictation extends HTMLElement {
   static get observedAttributes () { return ['engine', 'lang', 'disabled'] }
 
   constructor () {
     super()
+    /** @type {Transcriber | null} lo pasa la app con engine="provider" */
     this.transcriber = null
+    /** @type {DictationState} */
     this._state = 'idle'           // idle | loading | recording | transcribing
     this._localReady = false
+    /** @type {import('./audio.js').Recording | null} */
     this._rec = null
-    this._timer = null
-    this._errTimer = null
+    /** @type {ReturnType<typeof setInterval> | undefined} */
+    this._timer = undefined
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    this._errTimer = undefined
     this._progress = 0
     this._lastStatus = ''
     const root = this.attachShadow({ mode: 'open' })
     root.innerHTML = `<style>${STYLE}</style><button part="button" type="button" data-testid="dictation-button"><span class="ring"></span><span class="icon"></span></button><span class="status" part="status" role="status" aria-live="polite" data-testid="dictation-status"></span>`
-    this._btn = root.querySelector('button')
-    this._icon = root.querySelector('.icon')
-    this._ring = root.querySelector('.ring')
-    this._status = root.querySelector('.status')
+    // Los cuatro existen: los acaba de escribir la línea de arriba.
+    this._btn = /** @type {HTMLButtonElement} */ (root.querySelector('button'))
+    this._icon = /** @type {HTMLElement} */ (root.querySelector('.icon'))
+    this._ring = /** @type {HTMLElement} */ (root.querySelector('.ring'))
+    this._status = /** @type {HTMLElement} */ (root.querySelector('.status'))
     this._btn.addEventListener('click', () => this._press())
   }
 
@@ -80,6 +93,7 @@ export class DotrinoDictation extends HTMLElement {
     this.cancel()
   }
 
+  /** @param {string} name */
   attributeChangedCallback (name) {
     if (name === 'engine') {
       this.cancel()
@@ -88,15 +102,17 @@ export class DotrinoDictation extends HTMLElement {
     this._render()
   }
 
+  /** @returns {string} 'local', 'provider' o '' (apagado) */
   get engine () { return this.getAttribute('engine') || '' }
   // Los frameworks (Vue) lo pasan como propiedad: se refleja en el atributo.
   set engine (v) { if (v) this.setAttribute('engine', v); else this.removeAttribute('engine') }
+  /** @returns {DictationState} */
   get state () { return this._state }
 
   /** Suelta el micrófono y vuelve al reposo sin devolver texto. */
   cancel () {
     clearInterval(this._timer)
-    this._timer = null
+    this._timer = undefined
     this._rec?.cancel()
     this._rec = null
     if (this._state === 'recording') this._set('idle')
@@ -113,6 +129,7 @@ export class DotrinoDictation extends HTMLElement {
     this._render()
   }
 
+  /** @returns {import('./i18n.js').Texts} */
   _t () {
     const lang = (this.getAttribute('lang') || document.documentElement.lang || 'es').slice(0, 2)
     return TEXT[lang] || TEXT.en
@@ -122,6 +139,7 @@ export class DotrinoDictation extends HTMLElement {
     return (this.getAttribute('language') || this.getAttribute('lang') || document.documentElement.lang || 'es').slice(0, 2)
   }
 
+  /** @param {DictationState} state */
   _set (state) {
     this._state = state
     this.setAttribute('state', state)
@@ -144,7 +162,7 @@ export class DotrinoDictation extends HTMLElement {
               : t.start
     this._btn.setAttribute('aria-label', label)
     this._btn.title = label
-    this._ring.style.setProperty('--p', this._state === 'loading' ? this._progress : 0)
+    this._ring.style.setProperty('--p', String(this._state === 'loading' ? this._progress : 0))
     if (!this.hasAttribute('error')) {
       this._status.textContent = this._state === 'loading' ? `${t.downloading} ${this._progress}%`
         : this._state === 'transcribing' ? t.transcribing
@@ -167,12 +185,15 @@ export class DotrinoDictation extends HTMLElement {
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
   }
 
+  /** @param {string} text */
   _note (text) {
     this._status.dataset.note = text
     this._render()
   }
 
-  _fail (e) {
+  /** @param {unknown} err */
+  _fail (err) {
+    const e = /** @type {(Error & { code?: string }) | undefined} */ (err)
     const code = e?.code || 'other'
     if (!e?.code) console.error('[dictation]', e)
     const t = this._t()
@@ -202,7 +223,8 @@ export class DotrinoDictation extends HTMLElement {
     this._set('recording')
     const max = Number(this.getAttribute('max-seconds')) || DEFAULT_MAX_SECONDS
     this._timer = setInterval(() => {
-      if (Date.now() - this._rec.startedAt >= max * 1000) this._finish()
+      const rec = this._rec
+      if (rec && Date.now() - rec.startedAt >= max * 1000) this._finish()
       else this._render()
     }, 250)
   }
@@ -228,7 +250,7 @@ export class DotrinoDictation extends HTMLElement {
 
   async _finish () {
     clearInterval(this._timer)
-    this._timer = null
+    this._timer = undefined
     const rec = this._rec
     this._rec = null
     if (!rec) return
@@ -240,7 +262,7 @@ export class DotrinoDictation extends HTMLElement {
       const language = this._language()
       const text = String(this.engine === 'local'
         ? await transcribeLocal(blob, { language })
-        : await this.transcriber(blob, { language }) || '').trim()
+        : await /** @type {Transcriber} */ (this.transcriber)(blob, { language }) || '').trim()
       if (!text) throw codeError('empty', 'the transcription came back empty')
       this._set('idle')
       this.dispatchEvent(new CustomEvent('dotrino-dictation-text', { detail: { text, engine: this.engine }, bubbles: true, composed: true }))
